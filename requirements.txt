@@ -1,7 +1,10 @@
 python-telegram-bot==21.6
 requests
 python-dotenv
-gtts
 flask
 gunicorn
 httpx==0.27.2
+edge-tts
+SpeechRecognition
+pydub
+ffmpeg-python
