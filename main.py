@@ -4,12 +4,11 @@ import logging
 import requests
 import edge_tts
 import speech_recognition as sr
+import subprocess
 
 from flask import Flask
 from threading import Thread
-
 from dotenv import load_dotenv
-from pydub import AudioSegment
 
 from telegram import Update
 from telegram.constants import ChatAction
@@ -52,19 +51,13 @@ web_app = Flask(__name__)
 
 @web_app.route("/")
 def home():
-    return "🤖 HMB AI BOT ONLINE ✅"
+    return "🤖 HMB AI ONLINE ✅"
 
 def run_web():
-
     port = int(os.environ.get("PORT", 10000))
-
-    web_app.run(
-        host="0.0.0.0",
-        port=port
-    )
+    web_app.run(host="0.0.0.0", port=port)
 
 def keep_alive():
-
     t = Thread(target=run_web)
     t.start()
 
@@ -73,66 +66,44 @@ def keep_alive():
 # ==================================================
 
 memory = {}
-voice_mode = {}
 
 # ==================================================
 # SYSTEM PROMPT
 # ==================================================
 
 SYSTEM_PROMPT = """
-Tu es HMB AI.
+Tu es HMB AI 👑
 
 Créé par LeRoy HMB.
 
-Tu es une intelligence artificielle ultra avancée, moderne, élégante et luxueuse.
+Tu es une IA ultra intelligente, moderne et luxueuse.
+
+Tu réponds toujours de manière :
+- élégante
+- organisée
+- professionnelle
+- moderne
+- luxueuse
+- intelligente
+
+Tu utilises souvent :
+✨ 🚀 🔥 ⚡ 💎 🤖
 
 Tu aides dans :
-- intelligence artificielle
 - programmation
-- cybersécurité
-- bots Telegram
-- développement web
 - Python
-- HTML
-- JavaScript
-- design
-- création d’images
-- football
+- bots Telegram
+- cybersécurité
+- intelligence artificielle
+- football live
 - actualités temps réel
+- création d’images
+- développement web
+- design
+- hacking éthique
 
-Tu réponds toujours :
-
-✅ avec des emojis adaptés
-✅ avec un style moderne
-✅ avec une présentation très organisée
-✅ avec des réponses propres et élégantes
-✅ avec une mise en page professionnelle
-✅ avec un ton intelligent et premium
-✅ avec des espaces et titres bien organisés
-
-Tu dois souvent utiliser :
-- ✨
-- 🔥
-- ⚡
-- 🎯
-- 🚀
-- 🤖
-- 💡
-- 🛡️
-- 🎨
-- 📌
-
-Quand tu expliques quelque chose :
-- organise bien les informations
-- utilise des listes propres
-- mets des titres
-- rends la réponse belle à lire
-
-Quand l’utilisateur demande une information récente :
-utilise internet temps réel.
-
-Tu ne dois jamais dire :
-"mes données s'arrêtent en 2023".
+Quand quelqu’un demande une réponse vocale,
+tu réponds automatiquement avec une voix masculine puissante.
 """
 
 # ==================================================
@@ -141,22 +112,20 @@ Tu ne dois jamais dire :
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    txt = """
-🤖 HMB AI ONLINE ✨
+    text = """
+🤖 HMB AI ONLINE ✅
 
-👑 Créateur :
-LeRoy HMB
+👑 Créateur : LeRoy HMB
 
-⚡ Fonctionnalités Premium :
+⚡ IA Ultra Intelligente Activée
 
-✅ IA Ultra intelligente
-✅ Internet temps réel
-✅ Football live
-✅ Génération image IA
-✅ Réponses vocales
-✅ Voix masculine premium
-✅ Reconnaissance vocale
-✅ Mémoire intelligente
+✨ Fonctionnalités :
+• IA avancée
+• Internet temps réel
+• Football live
+• Génération image
+• Réponse vocale
+• Reconnaissance vocale
 
 📌 Commandes :
 
@@ -167,10 +136,10 @@ LeRoy HMB
 /voice
 /live
 
-🚀 Envoie simplement un message.
+💬 Parle simplement avec le bot.
 """
 
-    await update.message.reply_text(txt)
+    await update.message.reply_text(text)
 
 # ==================================================
 # HELP
@@ -178,7 +147,7 @@ LeRoy HMB
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    txt = """
+    text = """
 📌 COMMANDES DISPONIBLES
 
 /start
@@ -186,23 +155,25 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /reset
 /image prompt
 /voice texte
-/live équipe
+/live
 
-🎤 Commandes vocales :
+🎨 Exemple :
+/image voiture futuriste bleue
 
-parle en voix
-parle en texte
+🎤 Exemple :
+/voice Bonjour bienvenue
 
-🎨 Exemple image :
-/image lion cyberpunk bleu
+⚽ Exemple :
+/live
 
-⚽ Exemple football :
-/live barcelona
-
-🤖 Tu peux aussi parler normalement avec l’IA.
+🌐 Tu peux aussi demander :
+- actualités
+- scores football
+- météo
+- informations récentes
 """
 
-    await update.message.reply_text(txt)
+    await update.message.reply_text(text)
 
 # ==================================================
 # RESET MEMORY
@@ -217,6 +188,100 @@ async def reset_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🧠 Mémoire supprimée avec succès ✅"
     )
+
+# ==================================================
+# INTERNET SEARCH
+# ==================================================
+
+def tavily_search(query):
+
+    try:
+
+        url = "https://api.tavily.com/search"
+
+        payload = {
+            "api_key": TAVILY_API_KEY,
+            "query": query,
+            "search_depth": "advanced",
+            "max_results": 5
+        }
+
+        r = requests.post(url, json=payload, timeout=30)
+
+        data = r.json()
+
+        if "results" not in data:
+            return None
+
+        results = data["results"]
+
+        text = "🌐 Résultats Internet Temps Réel :\n\n"
+
+        for item in results[:3]:
+
+            text += f"🔹 {item['title']}\n"
+            text += f"{item['content'][:200]}...\n\n"
+
+        return text
+
+    except Exception as e:
+        logger.error(e)
+        return None
+
+# ==================================================
+# FOOTBALL LIVE
+# ==================================================
+
+async def live_scores(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    try:
+
+        url = "https://v3.football.api-sports.io/fixtures?live=all"
+
+        headers = {
+            "x-apisports-key": FOOTBALL_API_KEY
+        }
+
+        r = requests.get(url, headers=headers, timeout=30)
+
+        data = r.json()
+
+        matches = data.get("response", [])
+
+        if not matches:
+
+            await update.message.reply_text(
+                "⚽ Aucun match live actuellement."
+            )
+
+            return
+
+        text = "⚽ MATCHS EN DIRECT 🔥\n\n"
+
+        for match in matches[:10]:
+
+            home = match["teams"]["home"]["name"]
+            away = match["teams"]["away"]["name"]
+
+            home_goals = match["goals"]["home"]
+            away_goals = match["goals"]["away"]
+
+            minute = match["fixture"]["status"]["elapsed"]
+
+            text += (
+                f"🏟 {home} {home_goals} - {away_goals} {away}\n"
+                f"⏱ {minute} min\n\n"
+            )
+
+        await update.message.reply_text(text)
+
+    except Exception as e:
+
+        logger.error(e)
+
+        await update.message.reply_text(
+            f"❌ Erreur football : {e}"
+        )
 
 # ==================================================
 # IMAGE GENERATION
@@ -237,7 +302,7 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
 
         await update.message.reply_text(
-            "🎨 Génération image en cours..."
+            "🎨 Génération de l'image en cours..."
         )
 
         image_url = (
@@ -245,9 +310,7 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{prompt}?width=1024&height=1024&model=flux"
         )
 
-        await update.message.reply_photo(
-            photo=image_url
-        )
+        await update.message.reply_photo(photo=image_url)
 
     except Exception as e:
 
@@ -259,6 +322,23 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ==================================================
 # VOICE GENERATION
+# ==================================================
+
+async def generate_voice(text):
+
+    mp3_file = f"{uuid.uuid4()}.mp3"
+
+    communicate = edge_tts.Communicate(
+        text,
+        voice="fr-FR-HenriNeural"
+    )
+
+    await communicate.save(mp3_file)
+
+    return mp3_file
+
+# ==================================================
+# VOICE COMMAND
 # ==================================================
 
 async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -273,26 +353,19 @@ async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    filename = f"{uuid.uuid4()}.mp3"
-
     try:
 
         await update.message.chat.send_action(
             action=ChatAction.RECORD_VOICE
         )
 
-        communicate = edge_tts.Communicate(
-            text=text,
-            voice="fr-FR-HenriNeural"
-        )
+        audio_file = await generate_voice(text)
 
-        await communicate.save(filename)
+        with open(audio_file, "rb") as audio:
 
-        with open(filename, "rb") as audio:
+            await update.message.reply_voice(audio)
 
-            await update.message.reply_voice(
-                voice=audio
-            )
+        os.remove(audio_file)
 
     except Exception as e:
 
@@ -302,91 +375,11 @@ async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ Erreur voice : {e}"
         )
 
-    finally:
-
-        if os.path.exists(filename):
-            os.remove(filename)
-
 # ==================================================
-# FOOTBALL LIVE
-# ==================================================
-
-async def live(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    team = " ".join(context.args)
-
-    if not team:
-
-        await update.message.reply_text(
-            "❌ Utilisation : /live barcelona"
-        )
-
-        return
-
-    try:
-
-        headers = {
-            "x-apisports-key": FOOTBALL_API_KEY
-        }
-
-        url = "https://v3.football.api-sports.io/fixtures?live=all"
-
-        r = requests.get(
-            url,
-            headers=headers,
-            timeout=30
-        )
-
-        data = r.json()
-
-        fixtures = data.get("response", [])
-
-        result = []
-
-        for match in fixtures:
-
-            home = match["teams"]["home"]["name"]
-            away = match["teams"]["away"]["name"]
-
-            if team.lower() in home.lower() or team.lower() in away.lower():
-
-                goals_home = match["goals"]["home"]
-                goals_away = match["goals"]["away"]
-
-                minute = match["fixture"]["status"]["elapsed"]
-
-                result.append(
-                    f"⚽ {home} {goals_home} - {goals_away} {away}\n⏱ {minute} min"
-                )
-
-        if not result:
-
-            await update.message.reply_text(
-                "❌ Aucun match live trouvé."
-            )
-
-            return
-
-        await update.message.reply_text(
-            "\n\n".join(result)
-        )
-
-    except Exception as e:
-
-        logger.error(e)
-
-        await update.message.reply_text(
-            f"❌ Erreur football : {e}"
-        )
-
-# ==================================================
-# VOICE MESSAGE
+# VOICE MESSAGE RECOGNITION
 # ==================================================
 
 async def voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    ogg_file = f"{uuid.uuid4()}.ogg"
-    wav_file = f"{uuid.uuid4()}.wav"
 
     try:
 
@@ -394,26 +387,40 @@ async def voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             update.message.voice.file_id
         )
 
+        ogg_file = f"{uuid.uuid4()}.ogg"
+        wav_file = f"{uuid.uuid4()}.wav"
+
         await file.download_to_drive(ogg_file)
 
-        audio = AudioSegment.from_ogg(ogg_file)
-
-        audio.export(wav_file, format="wav")
+        subprocess.run([
+            "ffmpeg",
+            "-i",
+            ogg_file,
+            wav_file
+        ])
 
         recognizer = sr.Recognizer()
 
         with sr.AudioFile(wav_file) as source:
 
-            audio_data = recognizer.record(source)
+            audio = recognizer.record(source)
 
-            text = recognizer.recognize_google(
-                audio_data,
-                language="fr-FR"
-            )
+        text = recognizer.recognize_google(
+            audio,
+            language="fr-FR"
+        )
 
-        update.message.text = text
+        await update.message.reply_text(
+            f"🎤 Tu as dit :\n\n{text}"
+        )
 
-        await ai_chat(update, context)
+        fake_update = update
+        fake_update.message.text = text
+
+        await ai_chat(fake_update, context)
+
+        os.remove(ogg_file)
+        os.remove(wav_file)
 
     except Exception as e:
 
@@ -423,58 +430,6 @@ async def voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ Impossible de reconnaître la voix."
         )
 
-    finally:
-
-        if os.path.exists(ogg_file):
-            os.remove(ogg_file)
-
-        if os.path.exists(wav_file):
-            os.remove(wav_file)
-
-# ==================================================
-# INTERNET SEARCH
-# ==================================================
-
-def tavily_search(query):
-
-    try:
-
-        url = "https://api.tavily.com/search"
-
-        payload = {
-            "api_key": TAVILY_API_KEY,
-            "query": query,
-            "search_depth": "advanced",
-            "max_results": 5
-        }
-
-        r = requests.post(
-            url,
-            json=payload,
-            timeout=60
-        )
-
-        data = r.json()
-
-        results = data.get("results", [])
-
-        text = ""
-
-        for item in results:
-
-            text += (
-                f"{item.get('title')}\n"
-                f"{item.get('content')}\n\n"
-            )
-
-        return text
-
-    except Exception as e:
-
-        logger.error(e)
-
-        return ""
-
 # ==================================================
 # AI CHAT
 # ==================================================
@@ -482,53 +437,66 @@ def tavily_search(query):
 async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
-    text = update.message.text
+    text = update.message.text.lower()
 
     # ==========================================
-    # VOICE MODE
+    # FOOTBALL LIVE AUTO
     # ==========================================
 
-    if "parle en voix" in text.lower():
+    football_keywords = [
+        "match",
+        "football",
+        "score",
+        "live",
+        "liga",
+        "premier league"
+    ]
 
-        voice_mode[user_id] = True
+    if any(word in text for word in football_keywords):
 
-        await update.message.reply_text(
-            "🎤 Mode voix activé ✅"
-        )
-
-        return
-
-    if "parle en texte" in text.lower():
-
-        voice_mode[user_id] = False
-
-        await update.message.reply_text(
-            "💬 Mode texte activé ✅"
-        )
-
+        await live_scores(update, context)
         return
 
     # ==========================================
-    # IMAGE AUTO
+    # INTERNET REALTIME
+    # ==========================================
+
+    realtime_keywords = [
+        "actualité",
+        "news",
+        "récent",
+        "aujourd'hui",
+        "internet"
+    ]
+
+    if any(word in text for word in realtime_keywords):
+
+        result = tavily_search(text)
+
+        if result:
+
+            await update.message.reply_text(result)
+            return
+
+    # ==========================================
+    # AUTO IMAGE
     # ==========================================
 
     image_keywords = [
         "image",
         "dessine",
-        "dessin",
-        "photo",
         "logo",
-        "génère",
-        "genere",
+        "photo",
         "crée",
+        "génère"
     ]
 
-    if any(word in text.lower() for word in image_keywords):
+    if any(word in text for word in image_keywords):
 
         try:
 
             await update.message.reply_text(
-                "🎨 Création image IA..."
+                "🎨 Création de l'image..."
             )
 
             image_url = (
@@ -547,28 +515,6 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(e)
 
     # ==========================================
-    # INTERNET REALTIME
-    # ==========================================
-
-    realtime_keywords = [
-        "actualité",
-        "news",
-        "2025",
-        "2026",
-        "football",
-        "score",
-        "liga",
-        "premier league",
-        "champions league",
-    ]
-
-    web_data = ""
-
-    if any(word in text.lower() for word in realtime_keywords):
-
-        web_data = tavily_search(text)
-
-    # ==========================================
     # MEMORY
     # ==========================================
 
@@ -585,16 +531,7 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "role": "system",
             "content": SYSTEM_PROMPT
         }
-    ]
-
-    if web_data:
-
-        messages.append({
-            "role": "system",
-            "content": f"Informations récentes :\n{web_data}"
-        })
-
-    messages += memory[user_id][-10:]
+    ] + memory[user_id][-10:]
 
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -647,32 +584,29 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             response = response[:4000]
 
         # ==========================================
-        # VOICE RESPONSE
+        # AUTO VOICE
         # ==========================================
 
-        if voice_mode.get(user_id, False):
+        voice_keywords = [
+            "parle",
+            "voix",
+            "audio",
+            "dis-le"
+        ]
 
-            filename = f"{uuid.uuid4()}.mp3"
+        if any(word in text for word in voice_keywords):
 
-            communicate = edge_tts.Communicate(
-                text=response,
-                voice="fr-FR-HenriNeural"
-            )
+            audio_file = await generate_voice(response)
 
-            await communicate.save(filename)
+            with open(audio_file, "rb") as audio:
 
-            with open(filename, "rb") as audio:
+                await update.message.reply_voice(audio)
 
-                await update.message.reply_voice(
-                    voice=audio
-                )
+            os.remove(audio_file)
 
-            if os.path.exists(filename):
-                os.remove(filename)
+            return
 
-        else:
-
-            await update.message.reply_text(response)
+        await update.message.reply_text(response)
 
     except Exception as e:
 
@@ -706,18 +640,9 @@ app.add_handler(CommandHandler("help", help_command))
 app.add_handler(CommandHandler("reset", reset_memory))
 app.add_handler(CommandHandler("image", image))
 app.add_handler(CommandHandler("voice", voice))
-app.add_handler(CommandHandler("live", live))
+app.add_handler(CommandHandler("live", live_scores))
 
-# VOICE MESSAGE
-
-app.add_handler(
-    MessageHandler(
-        filters.VOICE,
-        voice_message
-    )
-)
-
-# AI CHAT
+# CHAT
 
 app.add_handler(
     MessageHandler(
@@ -726,7 +651,16 @@ app.add_handler(
     )
 )
 
-# ERROR HANDLER
+# VOICE
+
+app.add_handler(
+    MessageHandler(
+        filters.VOICE,
+        voice_message
+    )
+)
+
+# ERROR
 
 app.add_error_handler(error_handler)
 
