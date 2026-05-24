@@ -1,9 +1,13 @@
 import os
-import asyncio
+import uuid
+import logging
 import requests
+
+from flask import Flask
+from threading import Thread
+
 from gtts import gTTS
 from dotenv import load_dotenv
-from supabase import create_client, Client
 
 from telegram import Update
 from telegram.ext import (
@@ -14,58 +18,63 @@ from telegram.ext import (
     filters,
 )
 
-# =========================================
+# ==================================================
 # LOAD ENV
-# =========================================
+# ==================================================
 
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-OPENROUTER = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
-# =========================================
-# SUPABASE CONFIG
-# =========================================
+# ==================================================
+# LOGGING
+# ==================================================
 
-SUPABASE_URL = "https://oamwhotabmukzciuzvsn.supabase.co"
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 
-SUPABASE_KEY = "sb_secret_sx1b8SLsKELkCu5_I-o_YQ_a4dl7Xcy"
+logger = logging.getLogger(__name__)
 
-# =========================================
-# SUPABASE CLIENT
-# =========================================
+# ==================================================
+# FLASK KEEP ALIVE
+# ==================================================
 
-supabase = None
+web_app = Flask(__name__)
 
-try:
-    supabase: Client = create_client(
-        SUPABASE_URL,
-        SUPABASE_KEY
+@web_app.route("/")
+def home():
+    return "HMB AI BOT ONLINE ✅"
+
+def run_web():
+    web_app.run(
+        host="0.0.0.0",
+        port=10000
     )
 
-    print("✅ Supabase connecté")
+def keep_alive():
+    t = Thread(target=run_web)
+    t.start()
 
-except Exception as e:
-
-    print(f"❌ Erreur Supabase : {e}")
-
-# =========================================
+# ==================================================
 # MEMORY
-# =========================================
+# ==================================================
 
 memory = {}
 
-# =========================================
+# ==================================================
 # SYSTEM PROMPT
-# =========================================
+# ==================================================
 
 SYSTEM_PROMPT = """
 Tu es HMB AI.
 
 Créé par LeRoy HMB.
 
-Tu es extrêmement intelligent.
+Tu es une intelligence artificielle extrêmement avancée.
 
 Tu aides dans :
 - programmation
@@ -73,37 +82,25 @@ Tu aides dans :
 - bots Telegram
 - intelligence artificielle
 - développement
-- design
-- création d’images
-- code Python
+- Python
 - HTML
 - JavaScript
+- design
+- création d’images
 - hacking éthique
 
-Tu réponds de manière professionnelle.
+Tu réponds toujours de manière :
+- intelligente
+- rapide
+- professionnelle
+- moderne
 """
 
-# =========================================
+# ==================================================
 # START
-# =========================================
+# ==================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    user = update.effective_user
-
-    if supabase:
-
-        try:
-
-            supabase.table("users").upsert({
-                "id": user.id,
-                "username": user.username,
-                "first_name": user.first_name
-            }).execute()
-
-        except Exception as e:
-
-            print(f"Erreur users table : {e}")
 
     txt = """
 🤖 HMB AI ONLINE
@@ -111,42 +108,49 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 👑 Créateur :
 LeRoy HMB
 
-🧠 Intelligence artificielle activée.
+⚡ IA ultra intelligente activée
 
-📌 Commandes disponibles :
+📌 Commandes :
+
 /help
+/reset
 /image
 /voice
-/reset
-/admin
+
+💬 Envoie simplement un message.
 """
 
     await update.message.reply_text(txt)
 
-# =========================================
+# ==================================================
 # HELP
-# =========================================
+# ==================================================
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     txt = """
-📌 COMMANDES
+📌 COMMANDES DISPONIBLES
 
 /start
 /help
 /reset
-/image
-/voice
-/admin
+/image prompt
+/voice texte
 
-💬 Envoie simplement un message pour discuter avec IA.
+🎨 Exemple image :
+/image voiture futuriste bleue
+
+🎤 Exemple voice :
+/voice Bonjour bienvenue
+
+💬 Tu peux aussi parler normalement avec IA.
 """
 
     await update.message.reply_text(txt)
 
-# =========================================
+# ==================================================
 # RESET MEMORY
-# =========================================
+# ==================================================
 
 async def reset_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -158,9 +162,9 @@ async def reset_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🧠 Mémoire supprimée."
     )
 
-# =========================================
-# IMAGE
-# =========================================
+# ==================================================
+# IMAGE GENERATION
+# ==================================================
 
 async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -169,18 +173,34 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not prompt:
 
         await update.message.reply_text(
-            "Utilisation : /image voiture futuriste"
+            "❌ Utilisation : /image voiture futuriste"
         )
 
         return
 
-    url = f"https://image.pollinations.ai/prompt/{prompt}"
+    try:
 
-    await update.message.reply_photo(url)
+        await update.message.reply_text(
+            "🎨 Génération de l'image..."
+        )
 
-# =========================================
-# VOICE
-# =========================================
+        url = f"https://image.pollinations.ai/prompt/{prompt}"
+
+        await update.message.reply_photo(
+            photo=url
+        )
+
+    except Exception as e:
+
+        logger.error(e)
+
+        await update.message.reply_text(
+            f"❌ Erreur image : {e}"
+        )
+
+# ==================================================
+# VOICE GENERATION
+# ==================================================
 
 async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -189,87 +209,95 @@ async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text:
 
         await update.message.reply_text(
-            "Utilisation : /voice Bonjour"
+            "❌ Utilisation : /voice Bonjour"
         )
 
         return
 
-    tts = gTTS(
-        text=text,
-        lang="fr"
-    )
-
-    tts.save("voice.mp3")
-
-    with open("voice.mp3", "rb") as audio:
-
-        await update.message.reply_voice(audio)
-
-# =========================================
-# ADMIN
-# =========================================
-
-async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if update.effective_user.id != OWNER_ID:
-        return
-
-    if not supabase:
-
-        await update.message.reply_text(
-            "❌ Supabase non connecté."
-        )
-
-        return
+    filename = f"{uuid.uuid4()}.mp3"
 
     try:
 
-        users = supabase.table("users").select("*").execute()
-
-        total = len(users.data)
-
-        await update.message.reply_text(
-            f"👑 Total utilisateurs : {total}"
+        tts = gTTS(
+            text=text,
+            lang="fr"
         )
+
+        tts.save(filename)
+
+        with open(filename, "rb") as audio:
+
+            await update.message.reply_voice(
+                voice=audio
+            )
 
     except Exception as e:
 
+        logger.error(e)
+
         await update.message.reply_text(
-            f"❌ Erreur admin : {e}"
+            f"❌ Erreur voice : {e}"
         )
 
-# =========================================
+    finally:
+
+        if os.path.exists(filename):
+            os.remove(filename)
+
+# ==================================================
 # AI CHAT
-# =========================================
+# ==================================================
 
 async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
     text = update.message.text
 
-    # =========================================
-    # BLACKLIST
-    # =========================================
+    # ==========================================
+    # AUTO IMAGE DETECTION
+    # ==========================================
 
-    if supabase:
+    image_keywords = [
+        "image",
+        "dessine",
+        "dessin",
+        "photo",
+        "génère",
+        "genere",
+        "crée",
+        "cree",
+        "logo",
+    ]
+
+    if any(word in text.lower() for word in image_keywords):
 
         try:
 
-            blacklist = supabase.table("blacklist").select("*").eq(
-                "user_id",
-                user_id
-            ).execute()
+            await update.message.reply_text(
+                "🎨 Création de l'image..."
+            )
 
-            if blacklist.data:
-                return
+            url = f"https://image.pollinations.ai/prompt/{text}"
+
+            await update.message.reply_photo(
+                photo=url
+            )
+
+            return
 
         except Exception as e:
 
-            print(f"Erreur blacklist : {e}")
+            logger.error(e)
 
-    # =========================================
+            await update.message.reply_text(
+                f"❌ Erreur image : {e}"
+            )
+
+            return
+
+    # ==========================================
     # MEMORY
-    # =========================================
+    # ==========================================
 
     if user_id not in memory:
         memory[user_id] = []
@@ -284,10 +312,10 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "role": "system",
             "content": SYSTEM_PROMPT
         }
-    ] + memory[user_id][-12:]
+    ] + memory[user_id][-10:]
 
     headers = {
-        "Authorization": f"Bearer {OPENROUTER}",
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
 
@@ -300,14 +328,26 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
 
+        await update.message.chat.send_action(
+            action="typing"
+        )
+
         r = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
             headers=headers,
             json=payload,
-            timeout=60
+            timeout=90
         )
 
         data = r.json()
+
+        if "choices" not in data:
+
+            await update.message.reply_text(
+                f"❌ Réponse API invalide : {data}"
+            )
+
+            return
 
         response = data["choices"][0]["message"]["content"]
 
@@ -316,30 +356,6 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "content": response
         })
 
-        # =========================================
-        # SAVE HISTORY
-        # =========================================
-
-        if supabase:
-
-            try:
-
-                supabase.table("history").insert({
-                    "user_id": user_id,
-                    "role": "user",
-                    "content": text
-                }).execute()
-
-                supabase.table("history").insert({
-                    "user_id": user_id,
-                    "role": "assistant",
-                    "content": response
-                }).execute()
-
-            except Exception as e:
-
-                print(f"Erreur history : {e}")
-
         if len(response) > 4000:
             response = response[:4000]
 
@@ -347,22 +363,38 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
 
+        logger.error(e)
+
         await update.message.reply_text(
             f"❌ Erreur IA : {e}"
         )
 
-# =========================================
+# ==================================================
+# ERROR HANDLER
+# ==================================================
+
+async def error_handler(update, context):
+
+    logger.error(
+        msg="Exception while handling update:",
+        exc_info=context.error
+    )
+
+# ==================================================
 # MAIN APP
-# =========================================
+# ==================================================
 
 app = ApplicationBuilder().token(TOKEN).build()
+
+# COMMANDS
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
 app.add_handler(CommandHandler("reset", reset_memory))
 app.add_handler(CommandHandler("image", image))
 app.add_handler(CommandHandler("voice", voice))
-app.add_handler(CommandHandler("admin", admin))
+
+# CHAT AI
 
 app.add_handler(
     MessageHandler(
@@ -371,18 +403,20 @@ app.add_handler(
     )
 )
 
-# =========================================
-# START BOT
-# =========================================
+# ERROR HANDLER
 
-print("🤖 HMB AI ONLINE")
+app.add_error_handler(error_handler)
+
+# ==================================================
+# START BOT
+# ==================================================
 
 if __name__ == "__main__":
 
-    asyncio.set_event_loop(
-        asyncio.new_event_loop()
-    )
+    print("🤖 HMB AI ONLINE ✅")
+
+    keep_alive()
 
     app.run_polling(
-        close_loop=False
-        )
+        drop_pending_updates=True
+)
