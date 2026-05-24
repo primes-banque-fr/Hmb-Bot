@@ -670,12 +670,23 @@ app.add_error_handler(error_handler)
 
 if __name__ == "__main__":
 
+    import asyncio
+
     print("🤖 HMB AI ONLINE ✅")
 
     keep_alive()
 
-    app.run_polling(
-        poll_interval=1,
-        drop_pending_updates=True,
-        close_loop=False
-    )
+    async def main():
+
+        await app.initialize()
+
+        await app.start()
+
+        await app.updater.start_polling()
+
+        print("🚀 BOT STARTED SUCCESSFULLY")
+
+        while True:
+            await asyncio.sleep(3600)
+
+    asyncio.run(main())
