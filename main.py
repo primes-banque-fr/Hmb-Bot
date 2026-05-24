@@ -10,6 +10,8 @@ from gtts import gTTS
 from dotenv import load_dotenv
 
 from telegram import Update
+from telegram.constants import ChatAction
+
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
@@ -50,9 +52,11 @@ def home():
     return "HMB AI BOT ONLINE ✅"
 
 def run_web():
+    port = int(os.environ.get("PORT", 10000))
+
     web_app.run(
         host="0.0.0.0",
-        port=10000
+        port=port
     )
 
 def keep_alive():
@@ -184,10 +188,13 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🎨 Génération de l'image..."
         )
 
-        url = f"https://image.pollinations.ai/prompt/{prompt}"
+        image_url = (
+            f"https://image.pollinations.ai/prompt/"
+            f"{prompt}?width=1024&height=1024&model=flux"
+        )
 
         await update.message.reply_photo(
-            photo=url
+            photo=image_url
         )
 
     except Exception as e:
@@ -217,6 +224,10 @@ async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     filename = f"{uuid.uuid4()}.mp3"
 
     try:
+
+        await update.message.chat.send_action(
+            action=ChatAction.RECORD_VOICE
+        )
 
         tts = gTTS(
             text=text,
@@ -277,10 +288,13 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🎨 Création de l'image..."
             )
 
-            url = f"https://image.pollinations.ai/prompt/{text}"
+            image_url = (
+                f"https://image.pollinations.ai/prompt/"
+                f"{text}?width=1024&height=1024&model=flux"
+            )
 
             await update.message.reply_photo(
-                photo=url
+                photo=image_url
             )
 
             return
@@ -316,7 +330,9 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://openrouter.ai",
+        "X-Title": "HMB AI"
     }
 
     payload = {
@@ -329,7 +345,7 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
 
         await update.message.chat.send_action(
-            action="typing"
+            action=ChatAction.TYPING
         )
 
         r = requests.post(
@@ -355,6 +371,11 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "role": "assistant",
             "content": response
         })
+
+        # LIMIT MEMORY
+
+        if len(memory[user_id]) > 20:
+            memory[user_id] = memory[user_id][-20:]
 
         if len(response) > 4000:
             response = response[:4000]
