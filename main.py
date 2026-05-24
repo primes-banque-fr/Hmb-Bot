@@ -675,5 +675,7 @@ if __name__ == "__main__":
     keep_alive()
 
     app.run_polling(
-        drop_pending_updates=True
-)
+        poll_interval=1,
+        drop_pending_updates=True,
+        close_loop=False
+    )
