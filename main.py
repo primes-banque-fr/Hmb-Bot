@@ -1,13 +1,16 @@
 import os
 import uuid
 import logging
+import asyncio
 import requests
+import edge_tts
+import speech_recognition as sr
 
 from flask import Flask
 from threading import Thread
 
-from gtts import gTTS
 from dotenv import load_dotenv
+from pydub import AudioSegment
 
 from telegram import Update
 from telegram.constants import ChatAction
@@ -28,7 +31,6 @@ load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
 # ==================================================
 # LOGGING
@@ -52,6 +54,7 @@ def home():
     return "HMB AI BOT ONLINE ✅"
 
 def run_web():
+
     port = int(os.environ.get("PORT", 10000))
 
     web_app.run(
@@ -60,7 +63,11 @@ def run_web():
     )
 
 def keep_alive():
+
     t = Thread(target=run_web)
+
+    t.daemon = True
+
     t.start()
 
 # ==================================================
@@ -98,6 +105,10 @@ Tu réponds toujours de manière :
 - rapide
 - professionnelle
 - moderne
+
+Tu peux répondre aux actualités récentes.
+Tu peux discuter du football actuel.
+Tu peux parler des nouvelles technologies.
 """
 
 # ==================================================
@@ -121,6 +132,8 @@ LeRoy HMB
 /image
 /voice
 
+🎤 Envoie aussi des messages vocaux.
+
 💬 Envoie simplement un message.
 """
 
@@ -141,13 +154,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /image prompt
 /voice texte
 
-🎨 Exemple image :
-/image voiture futuriste bleue
+🎨 Exemple :
+/image lion cyberpunk
 
-🎤 Exemple voice :
+🎤 Exemple :
 /voice Bonjour bienvenue
 
-💬 Tu peux aussi parler normalement avec IA.
+🎙️ Tu peux aussi envoyer un vocal directement.
 """
 
     await update.message.reply_text(txt)
@@ -165,6 +178,65 @@ async def reset_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🧠 Mémoire supprimée."
     )
+
+# ==================================================
+# AI RESPONSE
+# ==================================================
+
+async def generate_ai_response(user_id, text):
+
+    if user_id not in memory:
+        memory[user_id] = []
+
+    memory[user_id].append({
+        "role": "user",
+        "content": text
+    })
+
+    messages = [
+        {
+            "role": "system",
+            "content": SYSTEM_PROMPT
+        }
+    ] + memory[user_id][-10:]
+
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://openrouter.ai",
+        "X-Title": "HMB AI"
+    }
+
+    payload = {
+        "model": "openai/gpt-4o-mini",
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": 1200
+    }
+
+    r = requests.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers=headers,
+        json=payload,
+        timeout=90
+    )
+
+    data = r.json()
+
+    if "choices" not in data:
+        return f"❌ Erreur API : {data}"
+
+    response = data["choices"][0]["message"]["content"]
+
+    memory[user_id].append({
+        "role": "assistant",
+        "content": response
+    })
+
+    if len(memory[user_id]) > 20:
+        memory[user_id] = memory[user_id][-20:]
+
+    return response
 
 # ==================================================
 # IMAGE GENERATION
@@ -229,12 +301,12 @@ async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             action=ChatAction.RECORD_VOICE
         )
 
-        tts = gTTS(
+        communicate = edge_tts.Communicate(
             text=text,
-            lang="fr"
+            voice="fr-FR-RemyMultilingualNeural"
         )
 
-        tts.save(filename)
+        await communicate.save(filename)
 
         with open(filename, "rb") as audio:
 
@@ -256,6 +328,80 @@ async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(filename)
 
 # ==================================================
+# VOICE MESSAGE
+# ==================================================
+
+async def voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    try:
+
+        await update.message.reply_text(
+            "🎙️ Analyse du vocal..."
+        )
+
+        voice = await update.message.voice.get_file()
+
+        ogg_file = f"{uuid.uuid4()}.ogg"
+        wav_file = f"{uuid.uuid4()}.wav"
+        mp3_file = f"{uuid.uuid4()}.mp3"
+
+        await voice.download_to_drive(ogg_file)
+
+        audio = AudioSegment.from_ogg(ogg_file)
+
+        audio.export(wav_file, format="wav")
+
+        recognizer = sr.Recognizer()
+
+        with sr.AudioFile(wav_file) as source:
+
+            audio_data = recognizer.record(source)
+
+            text = recognizer.recognize_google(
+                audio_data,
+                language="fr-FR"
+            )
+
+        await update.message.reply_text(
+            f"🗣️ Tu as dit : {text}"
+        )
+
+        response = await generate_ai_response(
+            update.effective_user.id,
+            text
+        )
+
+        await update.message.reply_text(response)
+
+        communicate = edge_tts.Communicate(
+            text=response,
+            voice="fr-FR-RemyMultilingualNeural"
+        )
+
+        await communicate.save(mp3_file)
+
+        with open(mp3_file, "rb") as audio_file:
+
+            await update.message.reply_voice(
+                voice=audio_file
+            )
+
+        # DELETE FILES
+
+        for file in [ogg_file, wav_file, mp3_file]:
+
+            if os.path.exists(file):
+                os.remove(file)
+
+    except Exception as e:
+
+        logger.error(e)
+
+        await update.message.reply_text(
+            f"❌ Erreur vocal : {e}"
+        )
+
+# ==================================================
 # AI CHAT
 # ==================================================
 
@@ -263,10 +409,6 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
     text = update.message.text
-
-    # ==========================================
-    # AUTO IMAGE DETECTION
-    # ==========================================
 
     image_keywords = [
         "image",
@@ -309,73 +451,16 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             return
 
-    # ==========================================
-    # MEMORY
-    # ==========================================
-
-    if user_id not in memory:
-        memory[user_id] = []
-
-    memory[user_id].append({
-        "role": "user",
-        "content": text
-    })
-
-    messages = [
-        {
-            "role": "system",
-            "content": SYSTEM_PROMPT
-        }
-    ] + memory[user_id][-10:]
-
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://openrouter.ai",
-        "X-Title": "HMB AI"
-    }
-
-    payload = {
-        "model": "openai/gpt-4o-mini",
-        "messages": messages,
-        "temperature": 0.7,
-        "max_tokens": 1200
-    }
-
     try:
 
         await update.message.chat.send_action(
             action=ChatAction.TYPING
         )
 
-        r = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=90
+        response = await generate_ai_response(
+            user_id,
+            text
         )
-
-        data = r.json()
-
-        if "choices" not in data:
-
-            await update.message.reply_text(
-                f"❌ Réponse API invalide : {data}"
-            )
-
-            return
-
-        response = data["choices"][0]["message"]["content"]
-
-        memory[user_id].append({
-            "role": "assistant",
-            "content": response
-        })
-
-        # LIMIT MEMORY
-
-        if len(memory[user_id]) > 20:
-            memory[user_id] = memory[user_id][-20:]
 
         if len(response) > 4000:
             response = response[:4000]
@@ -402,31 +487,53 @@ async def error_handler(update, context):
     )
 
 # ==================================================
-# MAIN APP
+# MAIN
 # ==================================================
 
-app = ApplicationBuilder().token(TOKEN).build()
+async def main():
 
-# COMMANDS
+    app = ApplicationBuilder().token(TOKEN).build()
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("help", help_command))
-app.add_handler(CommandHandler("reset", reset_memory))
-app.add_handler(CommandHandler("image", image))
-app.add_handler(CommandHandler("voice", voice))
+    # COMMANDS
 
-# CHAT AI
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("reset", reset_memory))
+    app.add_handler(CommandHandler("image", image))
+    app.add_handler(CommandHandler("voice", voice))
 
-app.add_handler(
-    MessageHandler(
-        filters.TEXT & ~filters.COMMAND,
-        ai_chat
+    # VOICE MESSAGE
+
+    app.add_handler(
+        MessageHandler(
+            filters.VOICE,
+            voice_message
+        )
     )
-)
 
-# ERROR HANDLER
+    # TEXT CHAT
 
-app.add_error_handler(error_handler)
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            ai_chat
+        )
+    )
+
+    # ERROR
+
+    app.add_error_handler(error_handler)
+
+    print("🤖 HMB AI ONLINE ✅")
+
+    keep_alive()
+
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+
+    while True:
+        await asyncio.sleep(3600)
 
 # ==================================================
 # START BOT
@@ -434,26 +541,4 @@ app.add_error_handler(error_handler)
 
 if __name__ == "__main__":
 
-    import asyncio
-
-    print("🤖 HMB AI ONLINE ✅")
-
-    keep_alive()
-
-    loop = asyncio.new_event_loop()
-
-    asyncio.set_event_loop(loop)
-
-    loop.run_until_complete(
-        app.initialize()
-    )
-
-    loop.run_until_complete(
-        app.start()
-    )
-
-    loop.run_until_complete(
-        app.updater.start_polling()
-    )
-
-    loop.run_forever()
+    asyncio.run(main())
